@@ -207,7 +207,7 @@ Apply complete! Resources: 12 added, 0 changed, 0 destroyed.
 
 ## kubernetes provider를 통한 워크로드 생성
 
-### Kubernetes Provider 설정
+### kubernetes provider 설정
 
 클러스터가 정상적으로 운영 중이라면 간단한 파드를 배포하여 클러스터의 기능을 테스트할 수 있습니다. 직접 클러스터에 접근하여 진행할수도 있으나, 테라폼을 활용하여 파드를 배포하도록 하겠습니다. 이를 위해서는 kubernetes provider의 설정이 필요합니다. `provider.tf` 파일을 수정하여 kubernetes provider를 설정합니다.
 
@@ -254,11 +254,58 @@ Terraform has been successfully initialized!
 
 ### 워크로드 생성을 위한 terraform 코드 작성
 
-쿠버네티스 프로바이더의 초기화 이후 워크로드를 배포합니다. 간단한 Deployment, Service를 생성합니다. 생성된 Service를 통해 공인, 사설 타입의 로드밸런서가 생성되는지 확인합니다. 로드밸런서를 통해 VPC 내부, 외부 트래픽을 클러스터로 라우팅할 수 있으며 동작을 확인할 수 있습니다. 워크로드를 생성하기 위해 `infra.tf` 파일에 모든 리소스를 기재합니다.
+쿠버네티스 프로바이더의 초기화 이후 워크로드를 배포합니다. 간단한 Pod, Service를 생성합니다. 생성된 Service를 통해 공인, 사설 타입의 로드밸런서가 생성되는지 확인합니다. 로드밸런서를 통해 VPC 내부, 외부 트래픽을 클러스터로 라우팅할 수 있으며 동작을 확인할 수 있습니다. 워크로드를 생성하기 위해 `infra.tf` 파일에 모든 리소스를 기재합니다.
 
 예제 파일 : [workloads.tf](../workloads.tf)
 
 리소스들 중 몇 가지 중요한 요소를 살펴보겠습니다.
+
+```
+resource "null_resource" "create_kubeconfig" {
+  depends_on = [ncloud_nks_cluster.terraform_cluster]
+
+  provisioner "local-exec" {
+    command = "ncp-iam-authenticator update-kubeconfig --clusterUuid ${self.triggers.cluster_uuid} --region ${self.triggers.region}"
+
+    environment = {
+      CLUSTER_UUID = data.ncloud_nks_kube_config.kube_config.cluster_uuid
+      REGION       = "KR"
+    }
+  }
+  triggers = {
+    cluster_uuid = data.ncloud_nks_kube_config.kube_config.cluster_uuid
+    region       = "KR"
+  }
+}
+```
+
+위 코드는 `terraform-cluster` 에 접근하기 위한 kubeconfig 파일을 생성합니다. 클러스터에 접근하기 위한 여러가지 방법 중 테라폼이 실행되는 클라이언트 환경에 직접 kubeconfig 파일을 생성하여 저장하는 방식을 사용합니다. 이를 위해서는 `ncp-iam-authenticator`가 설치되어 있어야 합니다. NKS는 `ncp-iam-authenticator` 를 통해 클러스터에 대한 인증을 관리하고 사용자 권한을 부여합니다. 설치 및 사용 방법은 [가이드 문서](https://guide.ncloud-docs.com/docs/k8s-iam-auth-ncp-iam-authenticator)에서 확인할 수 있습니다. 이전에 작성한 kubernetes provider 설정에서도 `ncp-iam-authenticator` 관련 정보가 포함되어 있어 실행 시 사용됩니다.
+
+```
+resource "kubernetes_service" "nginx_public" {
+  metadata {
+    name = "nginx-service-public"
+
+    annotations = {
+      "service.beta.kubernetes.io/ncloud-load-balancer-internal" = "false"
+    }
+  }
+...
+}
+
+resource "kubernetes_service" "nginx_private" {
+  metadata {
+    name = "nginx-service-private"
+
+    annotations = {
+      "service.beta.kubernetes.io/ncloud-load-balancer-internal" = "true"
+    }
+  }
+...
+}
+```
+
+NKS에서 nginx pod를 외부에 노출시키기 위해 LoadBalancer 타입의 서비스를 생성하는 코드입니다. NKS에서는 LoadBalancer 타입의 서비스를 생성하면 자동으로 네트워크 프록시 로드밸런서(Network Proxy LoadBalancer)가 생성됩니다. 이때, service.beta.kubernetes.io/ncloud-load-balancer-internal 어노테이션을 사용하여 공인 또는 사설 로드밸런서를 선택적으로 지정할 수 있습니다. 이 예시에서는 공인 로드밸런서와 사설 로드밸런서 두 가지를 모두 생성하도록 설정합니다.
 
 ### terraform plan 및 apply (workloads)
 
@@ -284,6 +331,50 @@ Apply complete! Resources: 4 added, 0 changed, 0 destroyed.
 ```
 
 ### 배포된 워크로드 확인
+
+성공적으로 작업이 종료되면 생성된 kubeconfig 파일을 확인하고 클러스터에 접근하여 상태를 확인합니다. `ncp-iam-authenticator`를 통해 생성된 kubeconfig 파일은 기본적으로 ~/.kube/config에 저장됩니다. kubectl 명령어를 사용할 때, 이 디렉터리에 있는 kubeconfig 파일이 자동으로 참조되므로, 클러스터의 노드 상태와 배포된 워크로드의 상태를 손쉽게 확인할 수 있습니다.
+
+```
+$ cat ~/.kube/config
+(내용 확인)
+
+$ kubectl get nodes
+NAME                      STATUS   ROLES    AGE   VERSION
+terraform-node-1-w-43dx   Ready    <none>   85m   v1.26.10
+terraform-node-1-w-43dy   Ready    <none>   85m   v1.26.1
+```
+
+테라폼을 통해 생성한 `nginx-example` 파드는 클라우드 외부에 존재하는 `nginx:latest` 이미지를 사용합니다. 따라서 파드의 상태를 통해 아웃바운드 통신이 정상적으로 이루어지고 있음을 확인할 수 있습니다. 이는 NAT G/W와 라우팅 설정이 올바르게 구성되었음을 나타냅니다. 파드가 `Running` 상태가 아니라면 해당 리소스들의 상태를 검토해야합니다.
+
+```
+$ kubectl get pods
+NAME            READY   STATUS    RESTARTS   AGE
+nginx-example   1/1     Running   0          41m
+```
+
+서비스가 EXTERNAL-IP를 할당받았는지 확인합니다. 할당받은 경우 해당 주소를 통해 서비스에 접근할 수 있습니다. 할당받지 못한 경우 파드의 상태, 서비스의 구성, 로드밸런서 서브넷이 정상적으로 구성되어 있는지 확인이 필요합니다.
+
+```
+$ kubectl get svc
+NAME                    TYPE           CLUSTER-IP      EXTERNAL-IP                                        PORT(S)        AGE
+kubernetes              ClusterIP      198.19.128.1    <none>                                             443/TCP        98m
+nginx-service-private   LoadBalancer   198.19.163.46   default-nginx-service-private.kr.lb.naverncp.com   80:31690/TCP   41m
+nginx-service-public    LoadBalancer   198.19.154.72   default-nginx-service-public.kr.lb.naverncp.com    80:30457/TCP   41m
+```
+
+EXTERNAL-IP가 할당된 서비스에 접근하기 위한 명령어를 실행합니다. `nginx-service-private` 는 사설 로드밸런서이므로 VPC에 접근 가능한 환경에서만 해당 서비스를 호출할 수 있습니다. 두 로드밸런서는 동일한 파드를 타겟으로 하고 있으므로 접근시 동일한 결과값을 전달받아야 합니다.
+
+```
+$ curl default-nginx-service-private.kr.lb.naverncp.com
+...
+<title>Welcome to nginx!</title>
+...
+
+$ curl default-nginx-service-public.kr.lb.naverncp.com
+...
+<title>Welcome to nginx!</title>
+...
+```
 
 ## 클러스터 및 워크로드 정리
 
