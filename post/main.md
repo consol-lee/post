@@ -41,7 +41,7 @@ terraform {
 }
 ```
 
-`provider.tf` 를 생성한 다음 CLI 에서 `terraform init` 명령어를 입력하여 테라폼의 초기화를 진행합니다. 초기화를 통해 테라폼은 필요한 Provider의 플러그인을 다운로드하고 초기화 합니다. 명령어 실행 후 로그를 통해 초기화가 정상적으로 진행되었는지, 플러그인이 올바르게 설치되었는지 확인할 수 있습니다.
+`provider.tf`를 생성한 다음 CLI에서 `terraform init` 명령어를 입력하여 테라폼의 초기화를 진행합니다. 초기화를 통해 테라폼은 필요한 Provider의 플러그인을 다운로드하고 초기화합니다. 명령어 실행 후 로그를 통해 초기화가 정상적으로 진행되었는지, 플러그인이 올바르게 설치되었는지 확인할 수 있습니다.
 
 ```
 $ terrraform init
@@ -56,7 +56,7 @@ Terraform has been successfully initialized!
 (생략)
 ```
 
-위 로그를 통해 ncloud provider 플러그인이 성공적으로 설치되었으며 초기화가 되었다는 것을 알 수 있습니다.
+위 로그를 통해 ncloud provider 플러그인이 성공적으로 설치되었으며 초기화되었다는 것을 알 수 있습니다.
 
 ### kubernetes cluster 생성을 위한 terraform 코드 작성
 
@@ -72,7 +72,7 @@ kubernetes cluster를 생성하기 위해서는 상품 별로 아래 리소스�
 - Ncloud Kubernetes Service
 - Login Key
 
-리소스를 생성하기 위하여 `infra.tf` 파일에 모든 리소스를 기재합니다. 한 파일을 통해 인프라를 관리하면 테라폼 코드의 구조가 단순해지며 이해하기 쉬워집니다. 하지만 실무 환경에서는 코드의 재사용성과 유지보수성을 향상시키기 위해 각 리소스를 분리하고 모듈화하여 사용하는 것이 좋습니다. `infra.tf` 파일은 kubernetes cluster를 생성하기 위한 리소스가 기재되어 있습니다.
+리소스를 생성하기 위하여 `infra.tf` 파일에 모든 리소스를 기재합니다. 한 파일을 통해 인프라를 관리하면 테라폼 코드의 구조가 단순해지며 이해하기 쉬워집니다. 하지만 실무 환경에서는 코드의 재사용성과 유지보수성을 향상시키기 위해 각 리소스를 분리하고 모듈화하여 사용하는 것이 좋습니다. `infra.tf` 파일은 kubernetes cluster를 생성하기 위한 전체 리소스가 기재되어 있습니다.
 
 예제 파일 : [infra.tf](../intfra.tf)
 
@@ -101,6 +101,7 @@ resource "ncloud_subnet" "public_lb_subnet" {
 ```
 
 위 코드는 NKS를 통해 로드밸런서를 생성할 때 사용되는 로드밸런서 전용 서브넷 리소스를 정의합니다. 코드를 통해 두 개의 서브넷이 생성되며 각각 다음과 같은 목적으로 사용됩니다.
+
 - `private_lb_subnet` : 사설 타입의 로드밸런서를 생성할 때 사용됩니다. 로드밸런서는 VPC 내부 사설 IP를 할당 받으며 VPC 외부에서는 접근이 불가능합니다.
 - `public_lb_subnet` : 공인 타입의 로드밸런서를 생성할 때 사용됩니다. 로드밸런서는 인터넷 게이트웨이(IGW)와 연결되어 있으며 이를 통해 외부 인터넷 트래픽이 클러스터로 인입됩니다.
 
@@ -133,11 +134,11 @@ resource "ncloud_route_table_association" "kubernetes_route_table_subnet" {
 }
 ```
 
-위 코드는 VPC내의 Private Subnet에 위치한 워커 노드가 아웃바운드 인터넷 통신을 할 수 있도록 NAT G/W를 생성하고, 해당 서브넷의 트래픽이 NAT G/W를 통해 라우팅되도록 라우팅 규칙을 설정합니다. 콘솔에서는 Route Table을 간단하게 설정할 수 있으나, 테라폼을 통해서는 라우팅 테이블, 라우팅 규칙, 라우팅 테이블과 서브넷 연결을 위한 리소스를 각각 생성해주어야 합니다.
+위 코드는 VPC 내의 Private Subnet에 위치한 워커노드가 아웃바운드 인터넷 통신을 할 수 있도록 NAT G/W를 생성하고, 해당 서브넷의 트래픽이 NAT G/W를 통해 라우팅 되도록 라우팅 규칙을 설정합니다. 콘솔에서는 Route Table을 간단하게 설정할 수 있으나, 테라폼을 통해서는 라우팅 테이블, 라우팅 규칙, 라우팅 테이블과 서브넷 연결을 위한 리소스를 각각 생성해 주어야 합니다.
 
 - `ncloud_nat_gateway` : 인터넷 아웃바운드 통신을 위한 공인 NAT G/W 가 생성됩니다.
 - `ncloud_route_table` : 사설 서브넷을 지원하는 라우트 테이블을 생성합니다.
-- `ncloud_route` : NAT G/W를 라우팅 하기 위한 리소스를 생성합니다. 생성한 라우팅 테이블에 NAT G/W가 등록됩니다.
+- `ncloud_route` : NAT G/W를 라우팅하기 위한 리소스를 생성합니다. 생성한 라우팅 테이블에 NAT G/W가 등록됩니다.
 - `ncloud_route_table_association` : 라우팅 테이블과 서브넷을 연결하는 리소스를 생성합니다. 워커노드가 위치할 Private Subnet이 등록됩니다.
 
 ```
@@ -161,7 +162,7 @@ resource "ncloud_nks_node_pool" "node_pool" {
 }
 ```
 
-위 코드는 Ncloud Kubernetes Service의 클러스터와 노드풀을 생성합니다.
+위 코드는 Ncloud Kubernetes Service의 클러스터와 노드 풀을 생성합니다.
 
 - `ncloud_nks_cluster` : 이전에 생성한 VPC, Subnet, LB Subnet 등을 사용하여 쿠버네티스 클러스터를 생성합니다. 버전을 지정하지 않았으므로 제공 중인 가장 최신 버전이 선택됩니다.
 - `ncloud_nks_node_pool` : 워크로드가 배포되는 노드풀을 생성합니다. 클러스터 생성 시 등록한 서브넷을 사용하며, 워커노드는 해당 서브넷에 배치됩니다. 안정적인 운영을 위해 한 개의 클러스터에는 최소 2개 이상의 워커노드가 존재해야 합니다.
